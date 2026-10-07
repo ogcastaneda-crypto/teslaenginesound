@@ -3,194 +3,189 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Tesla Engine Sound Simulator</title>
+  <title>Tesla Engine Sound</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="app-container">
-    <!-- Header Bar -->
+
+    <!-- ── HEADER ───────────────────────────────────────────────────────── -->
     <header class="top-bar">
       <div class="brand">
         <span class="logo-icon">⚡</span>
-        <h1>TESLA SOUND ENGINE</h1>
+        <h1>TESLA SOUND</h1>
       </div>
       <div class="status-badges">
         <div id="gps-status" class="badge badge-warning">
-          <span class="dot"></span> <span id="gps-status-text">GPS: Inactivo</span>
+          <span class="dot"></span><span id="gps-status-text">GPS: Inactivo</span>
         </div>
         <div id="audio-status" class="badge badge-danger">
-          <span class="dot"></span> <span id="audio-status-text">Audio: Apagado</span>
+          <span class="dot"></span><span id="audio-status-text">Audio: Apagado</span>
         </div>
       </div>
     </header>
 
-    <!-- Main Dashboard -->
-    <main class="dashboard">
-      <!-- Instrument Cluster -->
-      <section class="cluster">
-        <!-- Speedometer Gauge -->
-        <div class="gauge-card speed-card">
-          <div class="gauge-display">
-            <svg class="gauge-svg" viewBox="0 0 200 200">
-              <path class="gauge-bg" d="M 30 160 A 80 80 0 1 1 170 160" />
-              <path id="speed-gauge-fill" class="gauge-fill speed-fill" d="M 30 160 A 80 80 0 1 1 170 160" stroke-dasharray="380" stroke-dashoffset="380" />
-            </svg>
-            <div class="gauge-center">
-              <span id="speed-value" class="value-huge">0</span>
-              <span id="unit-label" class="unit-text">KM/H</span>
-            </div>
-          </div>
-          <div class="gauge-footer">VELOCIDAD</div>
-        </div>
+    <!-- ── CLUSTER (Gauges + Ignition) ──────────────────────────────────── -->
+    <section class="cluster">
 
-        <!-- Start / Ignition Power Button -->
-        <div class="ignition-center">
-          <button id="btn-ignition" class="ignition-btn">
-            <div class="btn-inner">
-              <span class="power-icon">⏻</span>
-              <span class="btn-text" id="ignition-text">START ENGINE</span>
-            </div>
-          </button>
-          <div class="gear-badge" id="gear-indicator">GEAR N</div>
-        </div>
-
-        <!-- Tachometer (RPM) Gauge -->
-        <div class="gauge-card rpm-card">
-          <div class="gauge-display">
-            <svg class="gauge-svg" viewBox="0 0 200 200">
-              <path class="gauge-bg" d="M 30 160 A 80 80 0 1 1 170 160" />
-              <path id="rpm-gauge-fill" class="gauge-fill rpm-fill" d="M 30 160 A 80 80 0 1 1 170 160" stroke-dasharray="380" stroke-dashoffset="380" />
-            </svg>
-            <div class="gauge-center">
-              <span id="rpm-value" class="value-huge">800</span>
-              <span class="unit-text">RPM</span>
-            </div>
-          </div>
-          <div class="gauge-footer">REVOLUCIONES x1000</div>
-        </div>
-      </section>
-
-      <!-- Control Panels & Settings -->
-      <section class="controls-grid">
-        <!-- Sound & Engine Preset Selection -->
-        <div class="panel-card">
-          <h3><span class="icon">🏎️</span> PERFIL DE MOTOR</h3>
-          <div class="preset-buttons">
-            <button class="preset-btn active" data-preset="v8_muscle">
-              <span class="p-name">V8 Muscle</span>
-              <span class="p-desc">Grave, rudo & americano</span>
-            </button>
-            <button class="preset-btn" data-preset="v10_exotic">
-              <span class="p-name">V10 Supercar</span>
-              <span class="p-desc">Agudo, rápido & exótico</span>
-            </button>
-            <button class="preset-btn" data-preset="rotary_turbo">
-              <span class="p-name">Rotativo Single-Turbo</span>
-              <span class="p-desc">Zumbido rabioso & petardeos</span>
-            </button>
-            <button class="preset-btn" data-preset="cyber_hyper">
-              <span class="p-name">Cyberpunk Hypercar</span>
-              <span class="p-desc">Sintetizador futurista EV</span>
-            </button>
+      <!-- Velocímetro -->
+      <div class="gauge-card">
+        <div class="gauge-display">
+          <svg class="gauge-svg" viewBox="0 0 200 200">
+            <path class="gauge-bg" d="M 30 160 A 80 80 0 1 1 170 160" />
+            <path id="speed-gauge-fill" class="gauge-fill speed-fill"
+                  d="M 30 160 A 80 80 0 1 1 170 160"
+                  stroke-dasharray="380" stroke-dashoffset="380" />
+          </svg>
+          <div class="gauge-center">
+            <span id="speed-value" class="value-huge">0</span>
+            <span id="unit-label" class="unit-text">KM/H</span>
           </div>
         </div>
+        <div class="gauge-footer">VELOCIDAD</div>
+      </div>
 
-        <!-- Mode & Transmission Settings -->
-        <div class="panel-card">
-          <h3><span class="icon">⚙️</span> TRANSMISIÓN Y MODO</h3>
-          
-          <div class="setting-row">
-            <label>Transmisión</label>
-            <select id="transmission-select" class="custom-select">
-              <option value="auto_6">Secuencial 6 Marchas</option>
-              <option value="auto_7">Doble Embrague 7 Marchas</option>
-              <option value="direct">Transmisión Directa EV (1 Marcha)</option>
-            </select>
+      <!-- Botón de encendido central -->
+      <div class="ignition-center">
+        <button id="btn-ignition" class="ignition-btn">
+          <div class="btn-inner">
+            <span class="power-icon">⏻</span>
+            <span class="btn-text" id="ignition-text">START</span>
           </div>
+        </button>
+        <div class="gear-badge" id="gear-indicator">STOP</div>
+      </div>
 
-          <div class="setting-row">
-            <label>Modo de Prueba</label>
-            <div class="toggle-group">
-              <button id="mode-gps" class="toggle-btn active">GPS Real (Coche)</button>
-              <button id="mode-demo" class="toggle-btn">Manual (Prueba)</button>
-            </div>
-          </div>
-
-          <!-- Manual Demo Throttle Slider (Shown only when in Manual mode) -->
-          <div id="demo-controls" class="demo-slider-box hidden">
-            <div class="slider-header">
-              <span>Acelerador Manual (Demo)</span>
-              <span id="demo-throttle-val">0%</span>
-            </div>
-            <input type="range" id="throttle-slider" min="0" max="100" value="0" class="custom-range" />
-            <p class="help-hint">💡 O usa las teclas [FLECHA ARRIBA] o [W] en la computadora.</p>
+      <!-- Tacómetro / BPM -->
+      <div class="gauge-card">
+        <div class="gauge-display">
+          <svg class="gauge-svg" viewBox="0 0 200 200">
+            <path class="gauge-bg" d="M 30 160 A 80 80 0 1 1 170 160" />
+            <path id="rpm-gauge-fill" class="gauge-fill rpm-fill"
+                  d="M 30 160 A 80 80 0 1 1 170 160"
+                  stroke-dasharray="380" stroke-dashoffset="380" />
+          </svg>
+          <div class="gauge-center">
+            <span id="rpm-value" class="value-huge">800</span>
+            <span id="rpm-label" class="unit-text">RPM</span>
           </div>
         </div>
+        <div class="gauge-footer">REVOLUCIONES</div>
+      </div>
 
-        <!-- Audio Adjustments & FX -->
-        <div class="panel-card">
-          <h3><span class="icon">🔊</span> AJUSTES DE SONIDO</h3>
-          
-          <div class="setting-row">
-            <label for="master-volume">Volumen Principal</label>
-            <input type="range" id="master-volume" min="0" max="100" value="80" class="custom-range" />
-          </div>
+    </section>
 
-          <div class="setting-row">
-            <label for="idle-volume">Volumen en Ralentí (Idle)</label>
-            <input type="range" id="idle-volume" min="10" max="100" value="50" class="custom-range" />
-          </div>
+    <!-- ── PRESETS ───────────────────────────────────────────────────────── -->
+    <section class="preset-section">
 
-          <div class="setting-row checkbox-row">
-            <label class="checkbox-container">
-              <input type="checkbox" id="pop-fx-toggle" checked />
-              <span class="checkmark"></span>
-              Petardeos al Desacelerar (Pops & Burbles)
-            </label>
-          </div>
-
-          <div class="setting-row checkbox-row">
-            <label class="checkbox-container">
-              <input type="checkbox" id="unit-toggle" />
-              <span class="checkmark"></span>
-              Usar Millas por Hora (MPH) en lugar de KM/H
-            </label>
-          </div>
+      <!-- Motores -->
+      <div class="preset-group">
+        <span class="group-label">⚙️ MOTORES</span>
+        <div class="preset-chips">
+          <button class="chip active" data-preset="v8_muscle">🏎️ V8 Muscle</button>
+          <button class="chip" data-preset="v10_exotic">🦅 V10 Super</button>
+          <button class="chip" data-preset="rotary_turbo">🔄 Rotary</button>
+          <button class="chip" data-preset="cyber_hyper">⚡ Cyber EV</button>
+          <button class="chip" data-preset="harley">🏍️ Harley</button>
+          <button class="chip" data-preset="moto_sport">🏁 Moto Sport</button>
+          <button class="chip" data-preset="f1">🏆 F1</button>
+          <button class="chip" data-preset="tractor">🚜 Tractor</button>
+          <button class="chip" data-preset="lancha">⛵ Lancha</button>
         </div>
-      </section>
+      </div>
 
-      <!-- GPS & Telemetry Live Debug Drawer -->
-      <section class="telemetry-panel">
-        <div class="telemetry-header">
-          <span>TELEMETRÍA GPS Y SENSORES</span>
-          <span id="telemetry-accuracy">Precisión GPS: -- m</span>
+      <!-- Vehículos especiales -->
+      <div class="preset-group">
+        <span class="group-label">🐴 ESPECIALES</span>
+        <div class="preset-chips">
+          <button class="chip" data-preset="horse">🐴 Caballo</button>
+          <button class="chip" data-preset="carreta">🪵 Carreta</button>
+          <button class="chip" data-preset="sleigh">🎅 Trineo</button>
         </div>
-        <div class="telemetry-grid">
-          <div class="t-item">
-            <span class="t-label">Velocidad GPS</span>
-            <span id="t-gps-speed" class="t-val">0.0 km/h</span>
-          </div>
-          <div class="t-item">
-            <span class="t-label">Aceleración</span>
-            <span id="t-accel" class="t-val">0.00 m/s²</span>
-          </div>
-          <div class="t-item">
-            <span class="t-label">Frecuencia Firing</span>
-            <span id="t-freq" class="t-val">0 Hz</span>
-          </div>
-          <div class="t-item">
-            <span class="t-label">Coordenadas</span>
-            <span id="t-coords" class="t-val">Esperando GPS...</span>
-          </div>
+      </div>
+
+    </section>
+
+    <!-- ── SETTINGS BAR ──────────────────────────────────────────────────── -->
+    <section class="settings-bar">
+
+      <!-- Modo GPS / Demo -->
+      <div class="sbar-group">
+        <span class="sbar-label">MODO</span>
+        <div class="toggle-group">
+          <button id="mode-gps" class="toggle-btn active">GPS</button>
+          <button id="mode-demo" class="toggle-btn">Manual</button>
         </div>
-      </section>
-    </main>
+      </div>
+
+      <!-- Transmisión -->
+      <div class="sbar-group" id="transmission-group">
+        <span class="sbar-label">TRANS</span>
+        <select id="transmission-select" class="custom-select">
+          <option value="auto_6">6M</option>
+          <option value="auto_7">7M DCT</option>
+          <option value="direct">EV</option>
+        </select>
+      </div>
+
+      <!-- Volumen -->
+      <div class="sbar-group vol-group">
+        <span class="sbar-label">🔊 VOL</span>
+        <input type="range" id="master-volume" min="0" max="100" value="80" class="custom-range" />
+      </div>
+
+      <!-- Checkboxes compactos -->
+      <div class="sbar-checks">
+        <label class="mini-check">
+          <input type="checkbox" id="pop-fx-toggle" checked />
+          <span class="checkmark"></span>Pops
+        </label>
+        <label class="mini-check">
+          <input type="checkbox" id="unit-toggle" />
+          <span class="checkmark"></span>MPH
+        </label>
+      </div>
+
+      <!-- Throttle demo (oculto por defecto) -->
+      <div id="demo-controls" class="sbar-group demo-inline hidden">
+        <span class="sbar-label">ACEL <span id="demo-throttle-val">0%</span></span>
+        <input type="range" id="throttle-slider" min="0" max="100" value="0" class="custom-range" />
+      </div>
+
+    </section>
+
+    <!-- ── TELEMETRÍA (barra compacta) ───────────────────────────────────── -->
+    <section class="telemetry-bar">
+      <div class="tbar-item">
+        <span class="tbar-label">GPS</span>
+        <span id="t-gps-speed" class="tbar-val">0.0 km/h</span>
+      </div>
+      <div class="tbar-item">
+        <span class="tbar-label">Acel</span>
+        <span id="t-accel" class="tbar-val">0.00 m/s²</span>
+      </div>
+      <div class="tbar-item">
+        <span class="tbar-label">Freq</span>
+        <span id="t-freq" class="tbar-val">0 Hz</span>
+      </div>
+      <div class="tbar-item tbar-coords">
+        <span id="t-coords" class="tbar-val">Esperando GPS...</span>
+      </div>
+      <div class="tbar-item">
+        <span id="telemetry-accuracy" class="tbar-val">Prec: --m</span>
+      </div>
+    </section>
+
+    <!-- Input oculto para idle volume (mantenido por compatibilidad JS) -->
+    <input type="range" id="idle-volume" min="10" max="100" value="50" style="display:none;" />
+
   </div>
 
   <script src="audio-engine.js"></script>
+  <script src="rhythmic-engine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
