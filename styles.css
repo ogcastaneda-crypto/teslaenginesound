@@ -57,10 +57,15 @@ body {
 .brand { display: flex; align-items: center; gap: 0.6rem; }
 
 .brand-logo {
-  height: 28px;
-  width: auto;
+  width: 28px !important;
+  height: 28px !important;
+  max-width: 28px !important;
+  max-height: 28px !important;
   object-fit: contain;
-  filter: drop-shadow(0 0 8px rgba(0, 242, 255, 0.45));
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 6px rgba(0, 242, 255, 0.4));
 }
 
 .brand h1 {
