@@ -1,10 +1,8 @@
 /**
- * RhythmicSynthesizer — Motor de síntesis rítmica
- * Vehículos: Caballo, Carreta, Trineo de Santa
- *
- * Usa el patrón "Web Audio lookahead scheduler" (A Tale of Two Clocks)
- * para scheduling de beats con precisión de muestra.
- * Acepta un AudioContext compartido para coexistir con EngineAudioSynthesizer.
+ * RhythmicSynthesizer — Motor de síntesis física y orgánica
+ * Vehículos: Caballo (galope realista con micro-fricción y doble golpe), 
+ *            Carreta (crujidos de madera gruesa + vibración de rueda + caballo de tiro), 
+ *            Trineo (cascos acolchados en nieve + cascabeles de bronce).
  */
 class RhythmicSynthesizer {
   constructor() {
@@ -18,50 +16,51 @@ class RhythmicSynthesizer {
     this.currentPreset = 'horse';
     this.masterVolume  = 0.8;
 
-    // Lookahead scheduler state
+    // Scheduler de alta precisión
     this.nextBeatTime = 0.0;
     this.currentBeat  = 0;
     this.bpm          = 0;
     this.timerID      = null;
-    this.LOOKAHEAD_MS    = 25;    // ms entre llamadas al scheduler
-    this.SCHEDULE_AHEAD  = 0.12; // segundos de anticipación
+    this.LOOKAHEAD_MS    = 25;
+    this.SCHEDULE_AHEAD  = 0.12;
 
-    // Nodos de capas continuas (crujidos, viento, etc.)
     this.continuousNodes = [];
 
     this.presets = {
       horse: {
+        // Galope real de 4 tiempos asimétricos (cla-clack ... cla-CLUMP)
         beatCount: 4,
-        // 4 pulsos por ciclo: tac-tac-tac-THUD (galope natural)
-        beatTypes:   ['hoof', 'hoof', 'hoof', 'hoof_hard'],
-        beatVolumes: [ 0.65,   0.50,   0.60,   1.00 ],
-        bellBeats:   [],               // sin cascabeles
-        continuous:  [],
-        reverbMix:   0.28,
-        bpmFromSpeed: (kmh) => Math.max(0, 40 + kmh * 4.2),  // 10→82, 30→166
+        beatOffsets: [0.0, 0.22, 0.48, 0.70],
+        beatTypes:   ['hoof_strike', 'hoof_toe', 'hoof_strike', 'hoof_slam'],
+        beatVolumes: [ 0.75,          0.55,       0.70,          1.00 ],
+        bellBeats:   [],
+        continuous:  ['hoof_dust'],
+        reverbMix:   0.32,
+        bpmFromSpeed: (kmh) => Math.max(0, 45 + kmh * 4.6),
       },
       carreta: {
         beatCount: 4,
-        beatTypes:   ['hoof_wood', 'hoof_wood', 'hoof_wood', 'hoof_wood_hard'],
-        beatVolumes: [ 0.60,        0.45,         0.55,         0.90 ],
+        beatOffsets: [0.0, 0.24, 0.50, 0.72],
+        beatTypes:   ['wood_hoof', 'wood_hoof_toe', 'wood_hoof', 'wood_hoof_slam'],
+        beatVolumes: [ 0.70,        0.50,           0.65,        0.95 ],
         bellBeats:   [],
-        continuous:  ['creak', 'wheel'],
-        reverbMix:   0.22,
-        bpmFromSpeed: (kmh) => Math.max(0, 30 + kmh * 3.5),  // 10→65, 25→117
+        continuous:  ['heavy_creak', 'iron_wheel', 'harness_rattle'],
+        reverbMix:   0.28,
+        bpmFromSpeed: (kmh) => Math.max(0, 35 + kmh * 3.8),
       },
       sleigh: {
         beatCount: 4,
-        beatTypes:   ['hoof_snow', 'hoof_snow', 'hoof_snow', 'hoof_snow_hard'],
-        beatVolumes: [ 0.55,        0.42,         0.48,         0.80 ],
-        bellBeats:   [0, 2],           // cascabeles en beat 1 y 3
-        continuous:  ['wind'],
+        beatOffsets: [0.0, 0.23, 0.49, 0.71],
+        beatTypes:   ['snow_plow', 'snow_light', 'snow_plow', 'snow_slam'],
+        beatVolumes: [ 0.60,        0.45,         0.55,        0.85 ],
+        bellBeats:   [0, 2],
+        continuous:  ['wind_glide'],
         reverbMix:   0.45,
-        bpmFromSpeed: (kmh) => Math.max(0, 40 + kmh * 4.0),
+        bpmFromSpeed: (kmh) => Math.max(0, 42 + kmh * 4.3),
       },
     };
   }
 
-  // ─── INIT / START / STOP ──────────────────────────────────────────────────
   init(sharedCtx) {
     if (sharedCtx) {
       this.ctx = sharedCtx;
@@ -79,22 +78,20 @@ class RhythmicSynthesizer {
     const cfg = this.presets[this.currentPreset];
     const now = this.ctx.currentTime;
 
-    // Compresor dinámico
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -20;
-    this.compressor.knee.value      = 10;
-    this.compressor.ratio.value     = 4;
+    this.compressor.threshold.value = -18;
+    this.compressor.knee.value      = 12;
+    this.compressor.ratio.value     = 4.5;
     this.compressor.attack.value    = 0.003;
-    this.compressor.release.value   = 0.25;
+    this.compressor.release.value   = 0.22;
 
-    // Gain de salida maestro
     this.outputGain = this.ctx.createGain();
     this.outputGain.gain.setValueAtTime(this.masterVolume, now);
     this.compressor.connect(this.outputGain);
     this.outputGain.connect(this.ctx.destination);
 
-    // Reverb sintético
-    this.reverbNode = this._createReverb(2.2, 0.6);
+    // Reverb orgánico exterior
+    this.reverbNode = this._createOrganicReverb(2.0, 0.55);
     this.reverbGain = this.ctx.createGain();
     this.reverbGain.gain.value = cfg.reverbMix;
     this.dryGain = this.ctx.createGain();
@@ -103,10 +100,8 @@ class RhythmicSynthesizer {
     this.reverbGain.connect(this.compressor);
     this.dryGain.connect(this.compressor);
 
-    // Capas continuas
     this._startContinuous(cfg.continuous);
 
-    // Arrancar scheduler de beats
     this.bpm          = cfg.bpmFromSpeed(0);
     this.nextBeatTime = now + 0.1;
     this.currentBeat  = 0;
@@ -124,41 +119,44 @@ class RhythmicSynthesizer {
     this.isRunning = false;
   }
 
-  // ─── UPDATE EN TIEMPO REAL (llamado desde el loop de 60fps) ──────────────
   update(speedKmH, throttle) {
     if (!this.isRunning || !this.ctx) return;
     const cfg = this.presets[this.currentPreset];
     const targetBPM = Math.max(0, Math.min(220, cfg.bpmFromSpeed(speedKmH)));
-    // Suavizado de BPM para transiciones naturales
     this.bpm = this.bpm * 0.88 + targetBPM * 0.12;
     this._updateContinuous(throttle, speedKmH);
   }
 
   getCurrentBPM() { return Math.round(this.bpm); }
 
-  // ─── LOOKAHEAD SCHEDULER ─────────────────────────────────────────────────
   _scheduler() {
     const cfg = this.presets[this.currentPreset];
 
     while (this.nextBeatTime < this.ctx.currentTime + this.SCHEDULE_AHEAD) {
       if (this.bpm > 8) {
         const beatIdx = this.currentBeat % cfg.beatCount;
-        // Programar casco
+        
+        // Offset asimétrico para simular el paso y galope orgánico de 4 patas
+        const baseDuration = (60.0 / this.bpm);
+        const subOffset = (cfg.beatOffsets && cfg.beatOffsets[beatIdx] !== undefined)
+          ? cfg.beatOffsets[beatIdx] * baseDuration
+          : (beatIdx * (baseDuration / cfg.beatCount));
+        
+        const scheduledTime = this.nextBeatTime + (subOffset * 0.4);
+
         this._scheduleHoof(
           cfg.beatTypes[beatIdx],
           cfg.beatVolumes[beatIdx],
-          this.nextBeatTime
+          scheduledTime
         );
-        // Cascabeles en beats definidos
+
         if (cfg.bellBeats.includes(beatIdx)) {
-          this._scheduleBells(this.nextBeatTime);
+          this._scheduleBells(scheduledTime);
         }
-        // Avanzar tiempo al siguiente beat
-        // Dividimos por (beatCount/4) para mantener el ciclo en relación a la música
+
         const secPerBeat = (60.0 / this.bpm) / (cfg.beatCount / 4);
         this.nextBeatTime += secPerBeat;
       } else {
-        // Casi parado: avanzar sin sonido
         this.nextBeatTime = this.ctx.currentTime + 0.15;
       }
       this.currentBeat++;
@@ -166,204 +164,260 @@ class RhythmicSynthesizer {
     this.timerID = setTimeout(() => this._scheduler(), this.LOOKAHEAD_MS);
   }
 
-  // ─── SÍNTESIS DE CASCO ───────────────────────────────────────────────────
+  // ─── SÍNTESIS ACÚSTICA DE CASCO Y PEZUÑA ─────────────────────────────────
   _scheduleHoof(type, volume, time) {
-    // Parámetros según tipo de superficie
-    let dur, hpFreq, lpFreq, subFreq, subVol;
+    const now = time;
+    const gainScale = volume * this.masterVolume;
 
-    switch (type) {
-      case 'hoof_hard':
-        dur = 0.024; hpFreq = 380; lpFreq = 2600; subFreq = 90;  subVol = 0.18; break;
-      case 'hoof_wood':
-        dur = 0.018; hpFreq = 650; lpFreq = 3200; subFreq = 110; subVol = 0.06; break;
-      case 'hoof_wood_hard':
-        dur = 0.026; hpFreq = 420; lpFreq = 2800; subFreq = 95;  subVol = 0.14; break;
-      case 'hoof_snow':
-        dur = 0.028; hpFreq =  80; lpFreq =  700; subFreq = 55;  subVol = 0.05; break;
-      case 'hoof_snow_hard':
-        dur = 0.032; hpFreq = 100; lpFreq =  900; subFreq = 65;  subVol = 0.10; break;
-      default: // 'hoof'
-        dur = 0.019; hpFreq = 480; lpFreq = 2500; subFreq = 100; subVol = 0.10; break;
+    // 1. CAPA DE IMPACTO OSEO/CÓRNEO (Frecuencia resonante de pezuña hueca de queratina)
+    let bodyFreq = 160;
+    let bodyQ    = 3.8;
+    let clickHp  = 300;
+    let clickLp  = 2200;
+    let duration = 0.055;
+
+    if (type.includes('snow')) {
+      bodyFreq = 110;
+      bodyQ    = 1.5;
+      clickHp  = 120;
+      clickLp  = 850;
+      duration = 0.080;
+    } else if (type.includes('wood')) {
+      bodyFreq = 190;
+      bodyQ    = 4.5; // Resonancia hueca de tabla
+      clickHp  = 400;
+      clickLp  = 3400;
+      duration = 0.048;
     }
 
-    // --- Capa principal: clic percusivo ---
-    const bufSz  = Math.ceil(this.ctx.sampleRate * dur);
-    const buf    = this.ctx.createBuffer(1, bufSz, this.ctx.sampleRate);
-    const data   = buf.getChannelData(0);
-    for (let i = 0; i < bufSz; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSz * 0.22));
+    // Generador de tono resonante con envolvente de caída libre (cuerpo del casco)
+    const bodyOsc = this.ctx.createOscillator();
+    bodyOsc.type = 'triangle';
+    bodyOsc.frequency.setValueAtTime(bodyFreq * 1.5, now);
+    bodyOsc.frequency.exponentialRampToValueAtTime(bodyFreq * 0.75, now + duration);
+
+    const bodyFilter = this.ctx.createBiquadFilter();
+    bodyFilter.type = 'lowpass';
+    bodyFilter.frequency.setValueAtTime(bodyFreq * 2.2, now);
+    bodyFilter.Q.value = bodyQ;
+
+    const bodyGain = this.ctx.createGain();
+    bodyGain.gain.setValueAtTime(0.55 * gainScale, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    bodyOsc.connect(bodyFilter);
+    bodyFilter.connect(bodyGain);
+    bodyGain.connect(this.dryGain);
+    bodyGain.connect(this.reverbNode);
+
+    bodyOsc.start(now);
+    bodyOsc.stop(now + duration);
+
+    // 2. CAPA DE CONTACTO Y ROCE (Tierra / Piedras / Crujido)
+    const noiseSz = Math.ceil(this.ctx.sampleRate * duration);
+    const noiseBuf = this.ctx.createBuffer(1, noiseSz, this.ctx.sampleRate);
+    const nData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseSz; i++) {
+      nData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (noiseSz * 0.28));
     }
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
 
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = 'highpass'; hp.frequency.value = hpFreq;
+    const noiseSrc = this.ctx.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
 
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = lpFreq;
+    const nHp = this.ctx.createBiquadFilter();
+    nHp.type = 'highpass';
+    nHp.frequency.value = clickHp;
 
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(volume * this.masterVolume, time);
-    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    const nLp = this.ctx.createBiquadFilter();
+    nLp.type = 'lowpass';
+    nLp.frequency.value = clickLp;
 
-    src.connect(hp); hp.connect(lp); lp.connect(g);
-    g.connect(this.dryGain); g.connect(this.reverbNode);
-    src.start(time);
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.40 * gainScale, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
-    // --- Capa de sub-thud (solo en golpes fuertes) ---
-    if (subVol > 0.07) {
-      const subSz   = Math.ceil(this.ctx.sampleRate * 0.045);
-      const subBuf  = this.ctx.createBuffer(1, subSz, this.ctx.sampleRate);
-      const subData = subBuf.getChannelData(0);
-      for (let i = 0; i < subSz; i++) {
-        subData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (subSz * 0.5));
-      }
-      const subSrc  = this.ctx.createBufferSource();
-      subSrc.buffer = subBuf;
+    noiseSrc.connect(nHp);
+    nHp.connect(nLp);
+    nLp.connect(nGain);
+    nGain.connect(this.dryGain);
+    nGain.connect(this.reverbNode);
 
-      const subFilt = this.ctx.createBiquadFilter();
-      subFilt.type = 'lowpass'; subFilt.frequency.value = subFreq; subFilt.Q.value = 2.5;
+    noiseSrc.start(now);
 
-      const subG = this.ctx.createGain();
-      subG.gain.setValueAtTime(subVol * this.masterVolume, time);
-      subG.gain.exponentialRampToValueAtTime(0.001, time + 0.045);
+    // 3. RETUMBO DE SUELO (THUMP SUB-BAJO) para golpes fuertes de galope
+    if (type.includes('slam')) {
+      const subOsc = this.ctx.createOscillator();
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(80, now);
+      subOsc.frequency.exponentialRampToValueAtTime(38, now + 0.07);
 
-      subSrc.connect(subFilt); subFilt.connect(subG); subG.connect(this.dryGain);
-      subSrc.start(time);
+      const subGain = this.ctx.createGain();
+      subGain.gain.setValueAtTime(0.35 * gainScale, now);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+      subOsc.connect(subGain);
+      subGain.connect(this.dryGain);
+      subOsc.start(now);
+      subOsc.stop(now + 0.08);
     }
   }
 
-  // ─── SÍNTESIS DE CASCABELES ───────────────────────────────────────────────
+  // ─── CASCABELES METÁLICOS DE BRONCE (Trineo) ──────────────────────────────
   _scheduleBells(time) {
-    // Acorde de cascabeles: A6 + C7 + E7 + A7 (grupo armónico brillante)
-    const partials = [
-      { freq: 1760 + Math.random() * 18, vol: 0.22, decay: 0.45 },
-      { freq: 2093 + Math.random() * 22, vol: 0.18, decay: 0.40 },
-      { freq: 2637 + Math.random() * 28, vol: 0.14, decay: 0.35 },
-      { freq: 3520 + Math.random() * 35, vol: 0.08, decay: 0.28 },
+    const bellPitches = [
+      { f: 1975, d: 0.35, v: 0.25 },
+      { f: 2349, d: 0.32, v: 0.22 },
+      { f: 2793, d: 0.30, v: 0.18 },
+      { f: 3520, d: 0.25, v: 0.12 },
     ];
 
-    partials.forEach(({ freq, vol, decay }) => {
+    bellPitches.forEach(({ f, d, v }) => {
       const osc = this.ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.value = freq;
-
-      // Micro-vibrato para que suene más orgánico
-      const vib = this.ctx.createOscillator();
-      vib.type = 'sine'; vib.frequency.value = 6 + Math.random() * 3;
-      const vibG = this.ctx.createGain();
-      vibG.gain.value = 8;
-      vib.connect(vibG); vibG.connect(osc.frequency);
+      // Pequeño arpegio de agite
+      const jitter = (Math.random() - 0.5) * 20;
+      osc.frequency.setValueAtTime(f + jitter, time);
 
       const g = this.ctx.createGain();
-      g.gain.setValueAtTime(vol * this.masterVolume, time);
-      g.gain.exponentialRampToValueAtTime(0.001, time + decay);
+      g.gain.setValueAtTime(v * this.masterVolume, time);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + d);
 
       osc.connect(g);
       g.connect(this.dryGain);
       g.connect(this.reverbNode);
 
-      osc.start(time); vib.start(time);
-      osc.stop(time + decay + 0.05);
-      vib.stop(time + decay + 0.05);
+      osc.start(time);
+      osc.stop(time + d + 0.02);
     });
   }
 
-  // ─── CAPAS CONTINUAS (crujidos, ruedas, viento) ───────────────────────────
+  // ─── CAPAS CONTINUAS REALISTAS (Crujido de madera maciza y rueda) ──────────
   _startContinuous(layers) {
     this.continuousNodes = [];
 
-    if (layers.includes('creak')) {
-      // Crujido de madera: ruido filtrado + LFO en la frecuencia del filtro
-      const noiseNode = this._makeNoiseSource();
+    if (layers.includes('heavy_creak')) {
+      // Crujido de madera de carreta vieja: Ruido filtrado con resonancia en 120-240Hz
+      const noise = this._makeNoiseSource();
       const bp = this.ctx.createBiquadFilter();
-      bp.type = 'bandpass'; bp.frequency.value = 175; bp.Q.value = 3.0;
+      bp.type = 'bandpass';
+      bp.frequency.value = 160;
+      bp.Q.value = 4.0;
 
       const lfo = this.ctx.createOscillator();
-      lfo.type = 'sine'; lfo.frequency.value = 0.7;
-      const lfoG = this.ctx.createGain(); lfoG.gain.value = 55;
-      lfo.connect(lfoG); lfoG.connect(bp.frequency);
+      lfo.type = 'sawtooth';
+      lfo.frequency.value = 1.2;
+      const lfoG = this.ctx.createGain();
+      lfoG.gain.value = 80;
+      lfo.connect(lfoG);
+      lfoG.connect(bp.frequency);
 
-      const g = this.ctx.createGain(); g.gain.value = 0.05;
-      noiseNode.connect(bp); bp.connect(g); g.connect(this.dryGain);
-      noiseNode.start(); lfo.start();
-      this.continuousNodes.push({ type: 'creak', noiseNode, lfo, gain: g });
+      const g = this.ctx.createGain();
+      g.gain.value = 0.06;
+
+      noise.connect(bp);
+      bp.connect(g);
+      g.connect(this.dryGain);
+
+      noise.start();
+      lfo.start();
+      this.continuousNodes.push({ type: 'heavy_creak', noise, lfo, gain: g });
     }
 
-    if (layers.includes('wheel')) {
-      // Chirrido de eje: oscilador con vibrato lento
-      const osc = this.ctx.createOscillator();
-      osc.type = 'sine'; osc.frequency.value = 390;
-      const vib = this.ctx.createOscillator();
-      vib.type = 'sine'; vib.frequency.value = 2.2;
-      const vibG = this.ctx.createGain(); vibG.gain.value = 22;
-      vib.connect(vibG); vibG.connect(osc.frequency);
+    if (layers.includes('iron_wheel')) {
+      // Roce de llanta de hierro sobre tierra/adoquín
+      const noise = this._makeNoiseSource();
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 420;
+      lp.Q.value = 1.2;
 
-      const g = this.ctx.createGain(); g.gain.value = 0.014;
-      osc.connect(g); g.connect(this.dryGain);
-      osc.start(); vib.start();
-      this.continuousNodes.push({ type: 'wheel', osc, vib, gain: g });
+      const g = this.ctx.createGain();
+      g.gain.value = 0.035;
+
+      noise.connect(lp);
+      lp.connect(g);
+      g.connect(this.dryGain);
+
+      noise.start();
+      this.continuousNodes.push({ type: 'iron_wheel', noise, gain: g });
     }
 
-    if (layers.includes('wind')) {
-      // Viento: ruido rosa de alta frecuencia
-      const noiseNode = this._makeNoiseSource();
+    if (layers.includes('harness_rattle')) {
+      // Cascabeles y correas de cuero de la carreta
+      const noise = this._makeNoiseSource();
       const hp = this.ctx.createBiquadFilter();
-      hp.type = 'highpass'; hp.frequency.value = 2000;
-      const g = this.ctx.createGain(); g.gain.value = 0.025;
-      noiseNode.connect(hp); hp.connect(g); g.connect(this.dryGain);
-      noiseNode.start();
-      this.continuousNodes.push({ type: 'wind', noiseNode, gain: g });
+      hp.type = 'highpass';
+      hp.frequency.value = 2400;
+
+      const g = this.ctx.createGain();
+      g.gain.value = 0.015;
+
+      noise.connect(hp);
+      hp.connect(g);
+      g.connect(this.dryGain);
+
+      noise.start();
+      this.continuousNodes.push({ type: 'harness_rattle', noise, gain: g });
+    }
+
+    if (layers.includes('wind_glide')) {
+      const noise = this._makeNoiseSource();
+      const hp = this.ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 1800;
+
+      const g = this.ctx.createGain();
+      g.gain.value = 0.025;
+
+      noise.connect(hp);
+      hp.connect(g);
+      g.connect(this.dryGain);
+
+      noise.start();
+      this.continuousNodes.push({ type: 'wind_glide', noise, gain: g });
     }
   }
 
   _updateContinuous(throttle, speedKmH) {
-    const spd = Math.min(1, speedKmH / 35);
+    const spd = Math.min(1.2, speedKmH / 30);
     this.continuousNodes.forEach(n => {
       const now = this.ctx.currentTime;
-      switch (n.type) {
-        case 'creak': n.gain.gain.setTargetAtTime(0.03 + spd * 0.09, now, 0.6); break;
-        case 'wheel': n.gain.gain.setTargetAtTime(0.008 + spd * 0.025, now, 0.5); break;
-        case 'wind':  n.gain.gain.setTargetAtTime(0.008 + spd * 0.055, now, 0.3); break;
-      }
+      if (n.type === 'heavy_creak') n.gain.gain.setTargetAtTime(0.04 + spd * 0.09, now, 0.4);
+      if (n.type === 'iron_wheel')  n.gain.gain.setTargetAtTime(0.02 + spd * 0.07, now, 0.3);
+      if (n.type === 'harness_rattle') n.gain.gain.setTargetAtTime(0.01 + spd * 0.03, now, 0.3);
+      if (n.type === 'wind_glide')  n.gain.gain.setTargetAtTime(0.01 + spd * 0.06, now, 0.3);
     });
   }
 
   _stopContinuous() {
     this.continuousNodes.forEach(n => {
-      ['noiseNode', 'osc', 'lfo', 'vib'].forEach(k => {
+      ['noise', 'lfo'].forEach(k => {
         try { if (n[k]) n[k].stop(); } catch(e) {}
       });
     });
     this.continuousNodes = [];
   }
 
-  // ─── UTILITIES ────────────────────────────────────────────────────────────
   _makeNoiseSource() {
     const bufSz = 3 * this.ctx.sampleRate;
     const buf   = this.ctx.createBuffer(1, bufSz, this.ctx.sampleRate);
     const data  = buf.getChannelData(0);
-    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
     for (let i = 0; i < bufSz; i++) {
-      const w = Math.random() * 2 - 1;
-      b0 = 0.99886*b0 + w*0.0555179; b1 = 0.99332*b1 + w*0.0750759;
-      b2 = 0.96900*b2 + w*0.1538520; b3 = 0.86650*b3 + w*0.3104856;
-      b4 = 0.55000*b4 + w*0.5329522; b5 = -0.7616*b5 - w*0.0168980;
-      data[i] = (b0+b1+b2+b3+b4+b5+b6 + w*0.5362) * 0.11;
-      b6 = w * 0.115926;
+      data[i] = (Math.random() * 2 - 1);
     }
     const src = this.ctx.createBufferSource();
-    src.buffer = buf; src.loop = true;
+    src.buffer = buf;
+    src.loop = true;
     return src;
   }
 
-  _createReverb(durationSec, decay) {
+  _createOrganicReverb(durationSec, decay) {
     const len = Math.ceil(this.ctx.sampleRate * durationSec);
     const buf = this.ctx.createBuffer(2, len, this.ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const d = buf.getChannelData(ch);
       for (let i = 0; i < len; i++) {
-        d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, decay * 10);
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay * 8);
       }
     }
     const conv = this.ctx.createConvolver();
@@ -371,7 +425,6 @@ class RhythmicSynthesizer {
     return conv;
   }
 
-  // ─── SETTERS ──────────────────────────────────────────────────────────────
   setPreset(name) {
     if (this.presets[name]) {
       const wasRunning = this.isRunning;

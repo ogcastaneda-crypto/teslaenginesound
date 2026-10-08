@@ -211,29 +211,30 @@ document.addEventListener('DOMContentLoaded', () => {
       return { rpm: Math.min(8500, rpm), gear: 'D' };
     }
 
-    // ── MULTIPLICADOR CORREGIDO: 40 → 13 ──────────────────────────────────
-    // Antes: 10 km/h → 2220 RPM (3x demasiado alto)
-    // Ahora: 10 km/h →  1194 RPM (realista)
+    // ── MULTIPLICADOR CALIBRADO: 22 (Equilibrio perfecto ni muy lento ni 3x revolucionado) ──
+    // Antes: x40 (2220 RPM @ 10 km/h) -> muy acelerado
+    // Luego: x13 (1194 RPM @ 10 km/h) -> un poco bajo
+    // Ahora: x22 (~1500 RPM @ 10 km/h en 1ra, subiendo con ritmo natural)
     const gearRatios = state.transmission === 'auto_7'
       ? [0, 4.2, 2.8, 1.9, 1.4, 1.1, 0.9, 0.75]
       : [0, 3.8, 2.3, 1.5, 1.1, 0.88, 0.68];
 
     const maxGears = gearRatios.length - 1;
     let gear = Math.max(1, state.currentGear);
-    let rpm  = (speedKmH * gearRatios[gear] * 13) + 700;
+    let rpm  = (speedKmH * gearRatios[gear] * 22) + 750;
 
-    // Cambios de marcha — umbrales corregidos
-    if (rpm > 4500 && gear < maxGears) {
+    // Cambios de marcha calibrados para que el motor desarrolle rango realista
+    if (rpm > 5200 && gear < maxGears) {
       state.currentGear++;
       gear = state.currentGear;
-      rpm  = (speedKmH * gearRatios[gear] * 13) + 700;
-    } else if (rpm < 1200 && gear > 1) {
+      rpm  = (speedKmH * gearRatios[gear] * 22) + 750;
+    } else if (rpm < 1500 && gear > 1) {
       state.currentGear--;
       gear = state.currentGear;
-      rpm  = (speedKmH * gearRatios[gear] * 13) + 700;
+      rpm  = (speedKmH * gearRatios[gear] * 22) + 750;
     }
 
-    return { rpm: Math.min(8200, Math.max(800, rpm)), gear };
+    return { rpm: Math.min(8200, Math.max(750, rpm)), gear };
   }
 
   // ── LOOP PRINCIPAL 60 FPS ────────────────────────────────────────────────
