@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laberinto de inclinación</title>
+<style>
+:root{--bg:#e9efec;--ink:#16302b;--board:#fbfdfc;--wall:#2f5d62;--ball:#e0a100;--goal:#2e9e6b;--muted:#566b66;--btn:#16302b;--btnt:#fbfdfc;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a18;--ink:#e6f1ee;--board:#15282a;--wall:#7fc4c0;--ball:#ffc933;--goal:#4cc58f;--muted:#97aea9;--btn:#e6f1ee;--btnt:#0e1a18}}
+:root[data-theme="dark"]{--bg:#0e1a18;--ink:#e6f1ee;--board:#15282a;--wall:#7fc4c0;--ball:#ffc933;--goal:#4cc58f;--muted:#97aea9;--btn:#e6f1ee;--btnt:#0e1a18}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:ui-rounded,"Avenir Next","Trebuchet MS",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+.hud{display:flex;justify-content:space-between;width:100%;max-width:420px;font-size:1.05rem;font-weight:600}
+.stage{position:relative}
+canvas{display:block;border-radius:10px;background:var(--board)}
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;background:color-mix(in srgb,var(--board) 90%,transparent);border-radius:10px}
+.ov[hidden]{display:none}
+.ov h1{margin:0;font-size:1.5rem}
+.ov p{margin:0;color:var(--muted);max-width:28ch;line-height:1.4}
+button{font:inherit;font-weight:600;border:0;border-radius:999px;padding:12px 22px;background:var(--btn);color:var(--btnt);cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink);padding:8px 16px}
+button:focus-visible{outline:3px solid var(--goal);outline-offset:2px}
+.bar{display:flex;gap:10px}
+#msg{color:var(--muted);font-size:.9rem;min-height:1.2em;text-align:center}
+</style></head><body>
+<div class="hud"><span id="lv">Nivel 1</span><span id="tm">0.0 s</span></div>
+<div class="stage">
+  <canvas id="cv"></canvas>
+  <div class="ov" id="start">
+    <h1>Laberinto de inclinación</h1>
+    <p>Sostén el celular en vertical e inclínalo para llevar la pelota hasta la meta verde.</p>
+    <button id="go">Empezar</button>
+  </div>
+  <div class="ov" id="win" hidden>
+    <h1>¡Llegaste!</h1>
+    <p id="wt"></p>
+    <button id="next">Siguiente nivel</button>
+  </div>
+</div>
+<div class="bar"><button class="ghost" id="cal">Calibrar</button><button class="ghost" id="neu">Nuevo laberinto</button></div>
+<div id="msg"></div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let level=1,grid,cols,rows,N,M,cell,r,bx,by,vx=0,vy=0,tx=0,ty=0,zx=0,zy=0,rx=0,ry=0;
+let running=false,t0=0,last=0,sensor=false,keys={},drag=null;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const clamp=(v,m)=>Math.max(-m,Math.min(m,v));
+
+function gen(){
+  cols=Math.min(4+level,9);rows=cols+2;N=2*cols+1;M=2*rows+1;
+  grid=Array.from({length:M},()=>Array(N).fill(1));
+  grid[1][1]=0;
+  const seen=new Set(['0,0']),st=[[0,0]];
+  while(st.length){
+    const [c,w]=st[st.length-1];
+    const nb=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>[c+dx,w+dy,dx,dy]).filter(([a,b])=>a>=0&&b>=0&&a<cols&&b<rows&&!seen.has(a+','+b));
+    if(!nb.length){st.pop();continue}
+    const [a,b,dx,dy]=nb[Math.random()*nb.length|0];
+    seen.add(a+','+b);grid[2*b+1][2*a+1]=0;grid[2*w+1+dy][2*c+1+dx]=0;st.push([a,b]);
+  }
+  fit();bx=by=1.5*cell;vx=vy=0;$('lv').textContent='Nivel '+level;
+}
+function fit(){
+  const w=Math.min(innerWidth-24,420),h=innerHeight-190;
+  cell=Math.max(10,Math.floor(Math.min(w/N,h/M)));r=cell*.32;
+  const d=devicePixelRatio||1;
+  cv.width=N*cell*d;cv.height=M*cell*d;cv.style.width=N*cell+'px';cv.style.height=M*cell+'px';
+  ctx.setTransform(d,0,0,d,0,0);
+}
+function hit(x,y){
+  const c0=Math.max(0,(x-r)/cell|0),c1=Math.min(N-1,(x+r)/cell|0),r0=Math.max(0,(y-r)/cell|0),r1=Math.min(M-1,(y+r)/cell|0);
+  for(let j=r0;j<=r1;j++)for(let i=c0;i<=c1;i++)if(grid[j][i]){
+    const nx=Math.max(i*cell,Math.min(x,(i+1)*cell)),ny=Math.max(j*cell,Math.min(y,(j+1)*cell));
+    if((x-nx)**2+(y-ny)**2<r*r)return true;
+  }
+  return false;
+}
+function buzz(ms){try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}}
+function tilt(){
+  let a=clamp(rx-zx,35),b=clamp(ry-zy,35);
+  if(keys.ArrowLeft)a=-25;if(keys.ArrowRight)a=25;if(keys.ArrowUp)b=-25;if(keys.ArrowDown)b=25;
+  if(drag)a=drag.x,b=drag.y;
+  return [a,b];
+}
+function step(dt){
+  const [a,b]=tilt(),k=9*cell/35,f=Math.pow(.05,dt);
+  vx=(vx+a*k*dt)*f;vy=(vy+b*k*dt)*f;
+  let n=bx+vx*dt;if(!hit(n,by))bx=n;else{if(Math.abs(vx)>cell*1.5)buzz(15);vx*=-.3}
+  n=by+vy*dt;if(!hit(bx,n))by=n;else{if(Math.abs(vy)>cell*1.5)buzz(15);vy*=-.3}
+  const gx=(N-1.5)*cell,gy=(M-1.5)*cell;
+  if(Math.hypot(bx-gx,by-gy)<cell*.5){
+    running=false;const s=((performance.now()-t0)/1000).toFixed(1);
+    $('wt').textContent='Tiempo: '+s+' s';$('win').hidden=false;buzz([60,40,60]);
+  }
+}
+function draw(){
+  ctx.clearRect(0,0,N*cell,M*cell);
+  ctx.fillStyle=css('--wall');
+  for(let j=0;j<M;j++)for(let i=0;i<N;i++)if(grid[j][i])ctx.fillRect(i*cell,j*cell,cell+.5,cell+.5);
+  ctx.fillStyle=css('--goal');ctx.beginPath();ctx.arc((N-1.5)*cell,(M-1.5)*cell,cell*.42,0,7);ctx.fill();
+  ctx.fillStyle=css('--ball');ctx.beginPath();ctx.arc(bx,by,r,0,7);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.arc(bx-r*.3,by-r*.3,r*.3,0,7);ctx.fill();
+}
+function loop(t){
+  const dt=Math.min(.033,(t-last)/1000||.016);last=t;
+  if(running){step(dt);$('tm').textContent=((performance.now()-t0)/1000).toFixed(1)+' s'}
+  draw();requestAnimationFrame(loop);
+}
+function begin(){gen();running=true;t0=performance.now();$('start').hidden=true;$('win').hidden=true}
+function calibrate(){zx=rx;zy=ry}
+
+$('go').onclick=async()=>{
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      const p=await DeviceOrientationEvent.requestPermission();
+      if(p!=='granted')$('msg').textContent='Sin permiso del sensor. Usa flechas o arrastra sobre el laberinto.';
+    }
+  }catch(e){}
+  addEventListener('deviceorientation',e=>{
+    if(e.gamma==null)return;
+    if(!sensor){sensor=true;rx=e.gamma;ry=e.beta;calibrate();$('msg').textContent=''}
+    rx=e.gamma;ry=e.beta;
+  });
+  try{navigator.wakeLock&&navigator.wakeLock.request('screen')}catch(e){}
+  begin();
+  setTimeout(()=>{if(!sensor)$('msg').textContent='No se detecta giroscopio. Usa las flechas o arrastra sobre el laberinto.'},1500);
+};
+$('next').onclick=()=>{level++;begin()};
+$('neu').onclick=()=>{if(!$('start').hidden)return;begin()};
+$('cal').onclick=calibrate;
+addEventListener('keydown',e=>keys[e.key]=true);
+addEventListener('keyup',e=>keys[e.key]=false);
+cv.addEventListener('pointerdown',e=>{drag={sx:e.clientX,sy:e.clientY,x:0,y:0}});
+addEventListener('pointermove',e=>{if(drag){drag.x=clamp((e.clientX-drag.sx)/3,35);drag.y=clamp((e.clientY-drag.sy)/3,35)}});
+addEventListener('pointerup',()=>drag=null);
+addEventListener('resize',()=>{fit()});
+gen();requestAnimationFrame(loop);
+</script></body></html>
