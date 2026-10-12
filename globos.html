@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Revienta globos</title>
+<style>
+:root{--bg:#2a6f97;--ink:#10303f;--card:#fffffff0;--btn:#10303f;--btnt:#fff;--muted:#4a6272;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#e8f4fb;--card:#102a3bf0;--btn:#e8f4fb;--btnt:#0d2230;--muted:#9db6c4}}
+:root[data-theme="dark"]{--ink:#e8f4fb;--card:#102a3bf0;--btn:#e8f4fb;--btnt:#0d2230;--muted:#9db6c4}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);font-family:ui-rounded,"Avenir Next","Trebuchet MS",system-ui,sans-serif;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+#v{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:none}
+#cv{position:fixed;inset:0;width:100%;height:100%}
+.hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 0;font-weight:700;font-size:1.3rem;color:#fff;text-shadow:0 1px 5px rgba(0,0,0,.55);pointer-events:none}
+#hint{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 48px);text-align:center;color:#fff;font-size:.95rem;text-shadow:0 1px 4px rgba(0,0,0,.6);pointer-events:none}
+.ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px}
+.ov[hidden]{display:none}
+.card{background:var(--card);color:var(--ink);border-radius:18px;padding:24px;max-width:340px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.card h1{margin:0;font-size:1.6rem}
+.card p{margin:0;line-height:1.4}
+.card .s{color:var(--muted);font-size:.9rem}
+button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:13px 26px;background:var(--btn);color:var(--btnt);cursor:pointer}
+button:disabled{opacity:.6}
+button:focus-visible{outline:3px solid #ffb703;outline-offset:2px}
+</style></head><body>
+<video id="v" playsinline muted></video>
+<canvas id="cv"></canvas>
+<div class="hud"><span id="sc">Puntos: 0</span><span id="tm">45 s</span></div>
+<div id="hint"></div>
+<div class="ov" id="start"><div class="card">
+  <h1>Revienta globos</h1>
+  <p>Mueve la mano o la cabeza sobre los globos para reventarlos. También puedes tocarlos con el dedo. Los dorados valen 3 puntos.</p>
+  <p class="s">La cámara solo se usa en tu celular: no se graba ni se envía.</p>
+  <button id="go">Empezar</button>
+</div></div>
+<div class="ov" id="end" hidden><div class="card">
+  <h1>Tiempo</h1>
+  <p id="res"></p>
+  <button id="again">Jugar otra vez</button>
+</div></div>
+<script>
+const $=id=>document.getElementById(id),cv=$('cv'),ctx=cv.getContext('2d'),vid=$('v');
+const sm=document.createElement('canvas'),sx=sm.getContext('2d',{willReadFrequently:true});
+let W,H,bl=[],ps=[],score=0,tl=45,running=false,last=0,camOn=false,ac=null,spawn=0,prev=null,vw=640,vh=480,sw=64,sh=48,el=0;
+const COL=['#ff5d73','#4cc9f0','#80ed99','#b388ff','#ff8fab','#ff9f1c'];
+sm.width=sw;sm.height=sh;
+function size(){const d=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0)}
+function audio(){if(ac)return;const A=window.AudioContext||window.webkitAudioContext;if(A){ac=new A();if(ac.state==='suspended')ac.resume()}}
+function popSound(g){
+  if(!ac)return;const n=ac.createBuffer(1,ac.sampleRate*.12,ac.sampleRate),d=n.getChannelData(0);
+  for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);
+  const s=ac.createBufferSource();s.buffer=n;const f=ac.createBiquadFilter();f.type='highpass';f.frequency.value=g?1400:700;
+  const o=ac.createGain();o.gain.value=.5;s.connect(f);f.connect(o);o.connect(ac.destination);s.start();
+  if(g){const t=ac.currentTime,os=ac.createOscillator(),og=ac.createGain();os.frequency.value=1318;og.gain.setValueAtTime(.15,t);og.gain.exponentialRampToValueAtTime(.001,t+.3);os.connect(og);og.connect(ac.destination);os.start(t);os.stop(t+.32)}
+}
+function add(){
+  const gold=Math.random()<.12,m=Math.min(W,H),r=m*(gold?.07:.09+Math.random()*.03);
+  bl.push({x:r+Math.random()*(W-2*r),y:H+r*1.5,r,gold,c:gold?'#ffc933':COL[Math.random()*COL.length|0],
+    vy:(gold?150+Math.random()*60:70+Math.random()*50)*(1+el/45*.6),ph:Math.random()*6.28,t:0});
+}
+function motion(){
+  if(!camOn||vid.readyState<2)return null;
+  sx.drawImage(vid,0,0,sw,sh);
+  const d=sx.getImageData(0,0,sw,sh).data,n=sw*sh,cur=new Uint8Array(n),m=new Uint8Array(n);
+  for(let i=0;i<n;i++)cur[i]=d[i*4]*.3+d[i*4+1]*.59+d[i*4+2]*.11;
+  if(prev)for(let i=0;i<n;i++)m[i]=Math.abs(cur[i]-prev[i])>28?1:0;
+  prev=cur;return m;
+}
+function check(m){
+  const s=Math.max(W/vw,H/vh),ox=(W-vw*s)/2,oy=(H-vh*s)/2,k=sw/vw;
+  for(const b of bl){
+    const cx=(vw-(b.x-ox)/s)*k,cy=(b.y-oy)/s*k,rr=Math.max(2,b.r/s*k);
+    let hit=0,tot=0;
+    for(let y=Math.max(0,(cy-rr)|0);y<=Math.min(sh-1,cy+rr);y++)for(let x=Math.max(0,(cx-rr)|0);x<=Math.min(sw-1,cx+rr);x++){
+      if((x-cx)**2+(y-cy)**2<=rr*rr){tot++;hit+=m[y*sw+x]}
+    }
+    if(tot&&hit>=3&&hit/tot>.15)b.dead=true;
+  }
+}
+function burst(b){
+  for(let i=0;i<12;i++){const a=Math.random()*6.28,v=80+Math.random()*160;ps.push({x:b.x,y:b.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:.6,c:b.c})}
+  score+=b.gold?3:1;popSound(b.gold);try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}
+}
+function drawB(b){
+  const x=b.x+Math.sin(b.t*1.6+b.ph)*8,y=b.y,r=b.r;
+  ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,y+r*1.2);ctx.quadraticCurveTo(x+8,y+r*1.7,x-4,y+r*2.3);ctx.stroke();
+  ctx.fillStyle=b.c;ctx.beginPath();ctx.ellipse(x,y,r,r*1.2,0,0,7);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x,y+r*1.15);ctx.lineTo(x-5,y+r*1.4);ctx.lineTo(x+5,y+r*1.4);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.45)';ctx.beginPath();ctx.ellipse(x-r*.35,y-r*.4,r*.18,r*.3,.5,0,7);ctx.fill();
+}
+function end(){
+  running=false;let best=0;
+  try{best=+localStorage.getItem('globos-best')||0;if(score>best){best=score;localStorage.setItem('globos-best',best)}}catch(e){best=Math.max(best,score)}
+  $('res').textContent='Reventaste '+score+' puntos. Mejor marca: '+best+'.';$('end').hidden=false;
+}
+function loop(t){
+  const dt=Math.min(.05,(t-last)/1000||.016);last=t;
+  if(!camOn){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#2a6f97');g.addColorStop(1,'#7fb8d4');ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}else ctx.clearRect(0,0,W,H);
+  if(running){
+    tl-=dt;el+=dt;spawn-=dt;
+    if(spawn<=0){add();spawn=Math.max(.4,1-el/45*.5)*(.6+Math.random()*.8)}
+    for(const b of bl){b.y-=b.vy*dt;b.t+=dt}
+    const m=motion();if(m&&el>.8)check(m);
+    for(const b of bl)if(b.dead)burst(b);
+    bl=bl.filter(b=>!b.dead&&b.y>-b.r*3);
+    $('sc').textContent='Puntos: '+score;$('tm').textContent=Math.max(0,Math.ceil(tl))+' s';
+    if(tl<=0)end();
+  }
+  for(const b of bl)drawB(b);
+  for(const p of ps){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;p.l-=dt;ctx.globalAlpha=Math.max(0,p.l/.6);ctx.fillStyle=p.c;ctx.fillRect(p.x-3,p.y-3,6,6)}
+  ctx.globalAlpha=1;ps=ps.filter(p=>p.l>0);
+  requestAnimationFrame(loop);
+}
+function begin(){bl=[];ps=[];score=0;tl=45;el=0;spawn=0;prev=null;running=true;$('start').hidden=true;$('end').hidden=true;$('sc').textContent='Puntos: 0';if(ac&&ac.state==='suspended')ac.resume()}
+function hint(t){$('hint').textContent=t;setTimeout(()=>$('hint').textContent='',4500)}
+$('go').onclick=async()=>{
+  audio();$('go').disabled=true;$('go').textContent='Abriendo cámara…';
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+    vid.srcObject=st;await vid.play();
+    if(!vid.videoWidth)await new Promise(r=>vid.addEventListener('loadedmetadata',r,{once:true}));
+    vw=vid.videoWidth;vh=vid.videoHeight;sh=Math.round(sw*vh/vw);sm.height=sh;
+    vid.style.display='block';camOn=true;
+  }catch(e){camOn=false;hint('No se pudo abrir la cámara. Juega tocando los globos.')}
+  try{navigator.wakeLock&&navigator.wakeLock.request('screen')}catch(e){}
+  begin();
+};
+$('again').onclick=begin;
+cv.addEventListener('pointerdown',e=>{if(!running)return;for(const b of bl)if(Math.hypot(e.clientX-b.x,(e.clientY-b.y)/1.2)<b.r*1.2)b.dead=true});
+addEventListener('resize',size);
+size();requestAnimationFrame(loop);
+</script></body></html>
