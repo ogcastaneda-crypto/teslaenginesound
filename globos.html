@@ -28,19 +28,19 @@ button:focus-visible{outline:3px solid #ffb703;outline-offset:2px}
 <div id="hint"></div>
 <div class="ov" id="start"><div class="card">
   <h1>Revienta globos</h1>
-  <p>Mueve la mano o la cabeza sobre los globos para reventarlos. También puedes tocarlos con el dedo. Los dorados valen 3 puntos.</p>
+  <p>Mueve la mano o la cabeza sobre los globos que caen para reventarlos. También puedes tocarlos con el dedo. Los dorados valen 3 puntos. ¡Cuidado con las bombas! Si tocas una, pierdes.</p>
   <p class="s">La cámara solo se usa en tu celular: no se graba ni se envía.</p>
   <button id="go">Empezar</button>
 </div></div>
 <div class="ov" id="end" hidden><div class="card">
-  <h1>Tiempo</h1>
+  <h1 id="et">Tiempo</h1>
   <p id="res"></p>
   <button id="again">Jugar otra vez</button>
 </div></div>
 <script>
 const $=id=>document.getElementById(id),cv=$('cv'),ctx=cv.getContext('2d'),vid=$('v');
 const sm=document.createElement('canvas'),sx=sm.getContext('2d',{willReadFrequently:true});
-let W,H,bl=[],ps=[],score=0,tl=45,running=false,last=0,camOn=false,ac=null,spawn=0,prev=null,vw=640,vh=480,sw=64,sh=48,el=0;
+let W,H,bl=[],ps=[],score=0,tl=45,running=false,last=0,camOn=false,ac=null,spawn=0,prev=null,vw=640,vh=480,sw=64,sh=48,el=0,flash=0;
 const COL=['#ff5d73','#4cc9f0','#80ed99','#b388ff','#ff8fab','#ff9f1c'];
 sm.width=sw;sm.height=sh;
 function size(){const d=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0)}
@@ -53,8 +53,8 @@ function popSound(g){
   if(g){const t=ac.currentTime,os=ac.createOscillator(),og=ac.createGain();os.frequency.value=1318;og.gain.setValueAtTime(.15,t);og.gain.exponentialRampToValueAtTime(.001,t+.3);os.connect(og);og.connect(ac.destination);os.start(t);os.stop(t+.32)}
 }
 function add(){
-  const gold=Math.random()<.12,m=Math.min(W,H),r=m*(gold?.07:.09+Math.random()*.03);
-  bl.push({x:r+Math.random()*(W-2*r),y:H+r*1.5,r,gold,c:gold?'#ffc933':COL[Math.random()*COL.length|0],
+  const bomb=el>3&&Math.random()<.16,gold=!bomb&&Math.random()<.12,m=Math.min(W,H),r=m*(bomb?.075:gold?.07:.09+Math.random()*.03);
+  bl.push({x:r+Math.random()*(W-2*r),y:-r*2.5,r,gold,bomb,c:gold?'#ffc933':COL[Math.random()*COL.length|0],
     vy:(gold?150+Math.random()*60:70+Math.random()*50)*(1+el/45*.6),ph:Math.random()*6.28,t:0});
 }
 function motion(){
@@ -80,17 +80,33 @@ function burst(b){
   for(let i=0;i<12;i++){const a=Math.random()*6.28,v=80+Math.random()*160;ps.push({x:b.x,y:b.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:.6,c:b.c})}
   score+=b.gold?3:1;popSound(b.gold);try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}
 }
+function boom(b){
+  for(let i=0;i<30;i++){const a=Math.random()*6.28,v=120+Math.random()*320;ps.push({x:b.x,y:b.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:.8,c:i%2?'#ff9f1c':'#ff3b30'})}
+  flash=.6;
+  if(ac){const n=ac.createBuffer(1,ac.sampleRate*.5,ac.sampleRate),d=n.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);const s=ac.createBufferSource();s.buffer=n;const f=ac.createBiquadFilter();f.type='lowpass';f.frequency.value=500;const g=ac.createGain();g.gain.value=.9;s.connect(f);f.connect(g);g.connect(ac.destination);s.start()}
+  try{navigator.vibrate&&navigator.vibrate([200,60,200])}catch(e){}
+  end(true);
+}
+function drawBomb(x,y,r,t){
+  const p=.5+.5*Math.sin(t*10);
+  ctx.strokeStyle='rgba(255,59,48,'+(.4+.4*p)+')';ctx.lineWidth=4;ctx.beginPath();ctx.arc(x,y,r*1.35,0,7);ctx.stroke();
+  ctx.fillStyle='#1d1d22';ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.25)';ctx.beginPath();ctx.arc(x-r*.35,y-r*.35,r*.22,0,7);ctx.fill();
+  ctx.strokeStyle='#c9a66b';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x+r*.4,y-r*.85);ctx.quadraticCurveTo(x+r*.7,y-r*1.3,x+r*.3,y-r*1.5);ctx.stroke();
+  ctx.fillStyle=p>.5?'#ffd166':'#ff6b35';ctx.beginPath();ctx.arc(x+r*.3,y-r*1.5,r*.2,0,7);ctx.fill();
+}
 function drawB(b){
-  const x=b.x+Math.sin(b.t*1.6+b.ph)*8,y=b.y,r=b.r;
-  ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,y+r*1.2);ctx.quadraticCurveTo(x+8,y+r*1.7,x-4,y+r*2.3);ctx.stroke();
+  const x=b.x+(b.bomb?0:Math.sin(b.t*1.6+b.ph)*8),y=b.y,r=b.r;
+  if(b.bomb){drawBomb(x,y,r,b.t);return}
+  ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,y-r*1.2);ctx.quadraticCurveTo(x+8,y-r*1.7,x-4,y-r*2.3);ctx.stroke();
   ctx.fillStyle=b.c;ctx.beginPath();ctx.ellipse(x,y,r,r*1.2,0,0,7);ctx.fill();
-  ctx.beginPath();ctx.moveTo(x,y+r*1.15);ctx.lineTo(x-5,y+r*1.4);ctx.lineTo(x+5,y+r*1.4);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x,y-r*1.15);ctx.lineTo(x-5,y-r*1.4);ctx.lineTo(x+5,y-r*1.4);ctx.fill();
   ctx.fillStyle='rgba(255,255,255,.45)';ctx.beginPath();ctx.ellipse(x-r*.35,y-r*.4,r*.18,r*.3,.5,0,7);ctx.fill();
 }
-function end(){
-  running=false;let best=0;
+function end(lost){
+  if(!running)return;running=false;let best=0;
   try{best=+localStorage.getItem('globos-best')||0;if(score>best){best=score;localStorage.setItem('globos-best',best)}}catch(e){best=Math.max(best,score)}
-  $('res').textContent='Reventaste '+score+' puntos. Mejor marca: '+best+'.';$('end').hidden=false;
+  $('et').textContent=lost?'¡Boom!':'Tiempo';$('res').textContent=(lost?'Tocaste una bomba. ':'')+'Hiciste '+score+' puntos. Mejor marca: '+best+'.';$('end').hidden=false;
 }
 function loop(t){
   const dt=Math.min(.05,(t-last)/1000||.016);last=t;
@@ -98,19 +114,21 @@ function loop(t){
   if(running){
     tl-=dt;el+=dt;spawn-=dt;
     if(spawn<=0){add();spawn=Math.max(.4,1-el/45*.5)*(.6+Math.random()*.8)}
-    for(const b of bl){b.y-=b.vy*dt;b.t+=dt}
+    for(const b of bl){b.y+=b.vy*dt;b.t+=dt}
     const m=motion();if(m&&el>.8)check(m);
-    for(const b of bl)if(b.dead)burst(b);
-    bl=bl.filter(b=>!b.dead&&b.y>-b.r*3);
+    for(const b of bl)if(b.dead){if(b.bomb){boom(b);break}burst(b)}
+    bl=bl.filter(b=>!b.dead&&b.y<H+b.r*3);
     $('sc').textContent='Puntos: '+score;$('tm').textContent=Math.max(0,Math.ceil(tl))+' s';
     if(tl<=0)end();
   }
   for(const b of bl)drawB(b);
   for(const p of ps){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;p.l-=dt;ctx.globalAlpha=Math.max(0,p.l/.6);ctx.fillStyle=p.c;ctx.fillRect(p.x-3,p.y-3,6,6)}
-  ctx.globalAlpha=1;ps=ps.filter(p=>p.l>0);
+  ctx.globalAlpha=1;
+  if(flash>0){ctx.fillStyle='rgba(255,40,30,'+Math.min(.6,flash)+')';ctx.fillRect(0,0,W,H);flash-=dt}
+  ps=ps.filter(p=>p.l>0);
   requestAnimationFrame(loop);
 }
-function begin(){bl=[];ps=[];score=0;tl=45;el=0;spawn=0;prev=null;running=true;$('start').hidden=true;$('end').hidden=true;$('sc').textContent='Puntos: 0';if(ac&&ac.state==='suspended')ac.resume()}
+function begin(){bl=[];ps=[];score=0;tl=45;el=0;spawn=0;prev=null;flash=0;running=true;$('start').hidden=true;$('end').hidden=true;$('sc').textContent='Puntos: 0';if(ac&&ac.state==='suspended')ac.resume()}
 function hint(t){$('hint').textContent=t;setTimeout(()=>$('hint').textContent='',4500)}
 $('go').onclick=async()=>{
   audio();$('go').disabled=true;$('go').textContent='Abriendo cámara…';
