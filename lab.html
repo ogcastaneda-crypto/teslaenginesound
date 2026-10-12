@@ -10,6 +10,7 @@
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:ui-rounded,"Avenir Next","Trebuchet MS",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
 .hud{display:flex;justify-content:space-between;width:100%;max-width:420px;font-size:1.05rem;font-weight:600}
+#hp{color:#e0475f;letter-spacing:.12em}
 .stage{position:relative}
 canvas{display:block;border-radius:10px;background:var(--board)}
 .ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;background:color-mix(in srgb,var(--board) 90%,transparent);border-radius:10px}
@@ -19,15 +20,15 @@ canvas{display:block;border-radius:10px;background:var(--board)}
 button{font:inherit;font-weight:600;border:0;border-radius:999px;padding:12px 22px;background:var(--btn);color:var(--btnt);cursor:pointer}
 button.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink);padding:8px 16px}
 button:focus-visible{outline:3px solid var(--goal);outline-offset:2px}
-.bar{display:flex;gap:10px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 #msg{color:var(--muted);font-size:.9rem;min-height:1.2em;text-align:center}
 </style></head><body>
-<div class="hud"><span id="lv">Nivel 1</span><span id="tm">0.0 s</span></div>
+<div class="hud"><span id="lv">Nivel 1</span><span id="hp" aria-label="Vidas">♥♥♥</span><span id="tm">0.0 s</span></div>
 <div class="stage">
   <canvas id="cv"></canvas>
   <div class="ov" id="start">
     <h1>Laberinto de inclinación</h1>
-    <p>Sostén el celular en vertical e inclínalo para llevar la pelota hasta la meta verde.</p>
+    <p>Sostén el celular en vertical e inclínalo para llevar la pelota hasta la meta verde. Tienes 3 vidas: cada golpe contra una pared te quita una.</p>
     <button id="go">Empezar</button>
   </div>
   <div class="ov" id="win" hidden>
@@ -35,16 +36,65 @@ button:focus-visible{outline:3px solid var(--goal);outline-offset:2px}
     <p id="wt"></p>
     <button id="next">Siguiente nivel</button>
   </div>
+  <div class="ov" id="over" hidden>
+    <h1>Sin vidas</h1>
+    <p id="ot"></p>
+    <button id="again">Intentar de nuevo</button>
+  </div>
 </div>
-<div class="bar"><button class="ghost" id="cal">Calibrar</button><button class="ghost" id="neu">Nuevo laberinto</button></div>
+<div class="bar"><button class="ghost" id="cal">Calibrar</button><button class="ghost" id="neu">Reiniciar</button><button class="ghost" id="snd">Sonido: sí</button></div>
 <div id="msg"></div>
 <script>
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 const $=id=>document.getElementById(id);
 let level=1,grid,cols,rows,N,M,cell,r,bx,by,vx=0,vy=0,tx=0,ty=0,zx=0,zy=0,rx=0,ry=0;
-let running=false,t0=0,last=0,sensor=false,keys={},drag=null,boost=1;
+let running=false,t0=0,last=0,sensor=false,keys={},drag=null,boost=1,lives=3,inv=0,lastHit=0,muted=false,ac=null,roll=null;
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const clamp=(v,m)=>Math.max(-m,Math.min(m,v));
+function audio(){
+  if(ac)return;
+  const A=window.AudioContext||window.webkitAudioContext;if(!A)return;
+  ac=new A();if(ac.state==='suspended')ac.resume();
+  const len=ac.sampleRate,buf=ac.createBuffer(1,len,ac.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+  const src=ac.createBufferSource();src.buffer=buf;src.loop=true;
+  const fl=ac.createBiquadFilter();fl.type='bandpass';fl.frequency.value=200;fl.Q.value=.8;
+  const g=ac.createGain();g.gain.value=0;
+  src.connect(fl);fl.connect(g);g.connect(ac.destination);src.start();
+  roll={g,fl};
+}
+function tone(f,t,dur,type,vol,slide){
+  if(!ac||muted)return;
+  const s=ac.currentTime+t,o=ac.createOscillator(),g=ac.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,s);
+  if(slide)o.frequency.exponentialRampToValueAtTime(slide,s+dur);
+  g.gain.setValueAtTime(vol,s);g.gain.exponentialRampToValueAtTime(.001,s+dur);
+  o.connect(g);g.connect(ac.destination);o.start(s);o.stop(s+dur+.02);
+}
+const sfx={
+  hit(){tone(160,0,.18,'square',.2,60)},
+  life(){tone(330,0,.15,'sawtooth',.2,110);tone(110,.12,.3,'sawtooth',.2,55)},
+  win(){[523,659,784,1047].forEach((f,i)=>tone(f,i*.1,.25,'triangle',.22))},
+  over(){[392,330,262,196].forEach((f,i)=>tone(f,i*.22,.4,'sawtooth',.2))},
+  start(){tone(440,0,.1,'triangle',.2);tone(660,.1,.15,'triangle',.2)}
+};
+function rollSound(sp){
+  if(!roll||!ac)return;
+  const v=muted||!running?0:Math.min(1,sp/(6*cell))*.12;
+  roll.g.gain.setTargetAtTime(v,ac.currentTime,.05);
+  roll.fl.frequency.setTargetAtTime(150+sp/cell*60,ac.currentTime,.05);
+}
+function paint(){$('hp').textContent='♥'.repeat(lives)+'♡'.repeat(3-lives)}
+function hurt(){
+  lives--;inv=1.3;boost=1;paint();buzz(80);
+  if(lives<=0){running=false;sfx.over();$('ot').textContent='Llegaste al nivel '+level+'.';$('over').hidden=false;buzz([100,50,100])}
+  else sfx.life();
+}
+function bump(sp){
+  if(sp<cell*.5)return;
+  if(inv<=0)hurt();
+  else if(sp>cell*1.2&&performance.now()-lastHit>120){sfx.hit();lastHit=performance.now()}
+}
 
 function gen(){
   cols=Math.min(4+level,9);rows=cols+2;N=2*cols+1;M=2*rows+1;
@@ -83,16 +133,17 @@ function tilt(){
   return [a,b];
 }
 function step(dt){
-  const [a,b]=tilt();
+  inv=Math.max(0,inv-dt);const [a,b]=tilt();
   boost=Math.hypot(a,b)>6?Math.min(2.2,boost+dt*.7):Math.max(1,boost-dt*2);
   const k=9*cell/35*boost,f=Math.pow(.05,dt);
   vx=(vx+a*k*dt)*f;vy=(vy+b*k*dt)*f;
-  let n=bx+vx*dt;if(!hit(n,by))bx=n;else{if(Math.abs(vx)>cell*1.5)buzz(15);vx*=-.3;boost=Math.max(1,boost*.6)}
-  n=by+vy*dt;if(!hit(bx,n))by=n;else{if(Math.abs(vy)>cell*1.5)buzz(15);vy*=-.3;boost=Math.max(1,boost*.6)}
+  let n=bx+vx*dt;if(!hit(n,by))bx=n;else{bump(Math.abs(vx));vx*=-.3;boost=Math.max(1,boost*.6)}
+  n=by+vy*dt;if(!hit(bx,n))by=n;else{bump(Math.abs(vy));vy*=-.3;boost=Math.max(1,boost*.6)}
+  if(!running)return;
   const gx=(N-1.5)*cell,gy=(M-1.5)*cell;
   if(Math.hypot(bx-gx,by-gy)<cell*.5){
     running=false;const s=((performance.now()-t0)/1000).toFixed(1);
-    $('wt').textContent='Tiempo: '+s+' s';$('win').hidden=false;buzz([60,40,60]);
+    $('wt').textContent='Tiempo: '+s+' s';$('win').hidden=false;buzz([60,40,60]);sfx.win();
   }
 }
 function draw(){
@@ -100,18 +151,19 @@ function draw(){
   ctx.fillStyle=css('--wall');
   for(let j=0;j<M;j++)for(let i=0;i<N;i++)if(grid[j][i])ctx.fillRect(i*cell,j*cell,cell+.5,cell+.5);
   ctx.fillStyle=css('--goal');ctx.beginPath();ctx.arc((N-1.5)*cell,(M-1.5)*cell,cell*.42,0,7);ctx.fill();
-  ctx.fillStyle=css('--ball');ctx.beginPath();ctx.arc(bx,by,r,0,7);ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.arc(bx-r*.3,by-r*.3,r*.3,0,7);ctx.fill();
+  if(inv<=0||Math.floor(inv*10)%2){ctx.fillStyle=css('--ball');ctx.beginPath();ctx.arc(bx,by,r,0,7);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.arc(bx-r*.3,by-r*.3,r*.3,0,7);ctx.fill();}
 }
 function loop(t){
   const dt=Math.min(.033,(t-last)/1000||.016);last=t;
   if(running){step(dt);$('tm').textContent=((performance.now()-t0)/1000).toFixed(1)+' s'}
+  rollSound(running?Math.hypot(vx,vy):0);
   draw();requestAnimationFrame(loop);
 }
-function begin(){gen();running=true;t0=performance.now();$('start').hidden=true;$('win').hidden=true}
+function begin(){gen();inv=0;running=true;t0=performance.now();paint();$('start').hidden=true;$('win').hidden=true;$('over').hidden=true;if(ac&&ac.state==='suspended')ac.resume();sfx.start()}
 function calibrate(){zx=rx;zy=ry}
 
-$('go').onclick=async()=>{
+$('go').onclick=async()=>{audio();
   try{
     if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
       const p=await DeviceOrientationEvent.requestPermission();
@@ -128,7 +180,9 @@ $('go').onclick=async()=>{
   setTimeout(()=>{if(!sensor)$('msg').textContent='No se detecta giroscopio. Usa las flechas o arrastra sobre el laberinto.'},1500);
 };
 $('next').onclick=()=>{level++;begin()};
-$('neu').onclick=()=>{if(!$('start').hidden)return;begin()};
+$('neu').onclick=()=>{if(!$('start').hidden)return;level=1;lives=3;begin()};
+$('again').onclick=()=>{level=1;lives=3;begin()};
+$('snd').onclick=()=>{muted=!muted;$('snd').textContent='Sonido: '+(muted?'no':'sí')};
 $('cal').onclick=calibrate;
 addEventListener('keydown',e=>keys[e.key]=true);
 addEventListener('keyup',e=>keys[e.key]=false);
@@ -136,5 +190,6 @@ cv.addEventListener('pointerdown',e=>{drag={sx:e.clientX,sy:e.clientY,x:0,y:0}})
 addEventListener('pointermove',e=>{if(drag){drag.x=clamp((e.clientX-drag.sx)/3,35);drag.y=clamp((e.clientY-drag.sy)/3,35)}});
 addEventListener('pointerup',()=>drag=null);
 addEventListener('resize',()=>{fit()});
+document.addEventListener('visibilitychange',()=>{if(ac){document.hidden?ac.suspend():ac.resume()}});
 gen();requestAnimationFrame(loop);
 </script></body></html>
