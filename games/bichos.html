@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>¡Bichos en la cara!</title>
+<meta name="game-icon" content="🐜">
+<meta name="game-description" content="Los bichos se te paran en la cara. Quítatelos con gestos: cómetelos, aprieta los ojos, infla los cachetes.">
+<meta name="game-color" content="#ff6fa5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -62,9 +65,10 @@
   .spinner{width:46px;height:46px;border-radius:50%;border:5px solid var(--plum-3);border-top-color:var(--pink);animation:spin .9s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  .countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;
-    font-size:clamp(70px,22vw,200px);font-weight:700;text-shadow:0 6px 0 rgba(0,0,0,.35);text-align:center;padding:20px}
-  .countdown.small{font-size:clamp(24px,5vw,40px)}
+  .countdown{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;
+    font-size:clamp(70px,22vw,200px);font-weight:700;line-height:1;text-shadow:0 6px 0 rgba(0,0,0,.35);text-align:center;padding:20px;gap:10px}
+  .countdown.small #cd-num{font-size:clamp(24px,5vw,40px)}
+  .cd-hint{font-size:clamp(16px,3vw,24px);font-weight:500;color:var(--ink);background:rgba(36,16,47,.78);padding:6px 16px;border-radius:99px;text-shadow:none}
 
   /* Leyenda */
   .legend{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
@@ -93,7 +97,7 @@
       <div class="chip right"><small>Nivel</small><b id="level">1</b></div>
     </div>
 
-    <div class="countdown" id="countdown" hidden></div>
+    <div class="countdown" id="countdown" hidden><span id="cd-num"></span><span class="cd-hint" id="cd-hint">Pon cara normal un momento</span></div>
 
     <section class="overlay" data-screen="start">
       <div class="bugs" aria-hidden="true">🐜🪰🕷️</div>
@@ -126,14 +130,14 @@
     <li><div class="g" aria-hidden="true">😮</div><div><strong>Abre y cierra la boca</strong><span class="s">Cómete a la hormiga 🐜</span></div></li>
     <li><div class="g" aria-hidden="true">😖</div><div><strong>Aprieta los ojos</strong><span class="s">Aplasta la mosca 🪰</span></div></li>
     <li><div class="g" aria-hidden="true">🤨</div><div><strong>Arruga la frente</strong><span class="s">Sube o frunce las cejas 🕷️</span></div></li>
-    <li><div class="g" aria-hidden="true">🐡</div><div><strong>Infla los cachetes</strong><span class="s">Fuera, mosquito 🦟</span></div></li>
-    <li><div class="g" aria-hidden="true">🐽</div><div><strong>Arruga la nariz</strong><span class="s">Espanta al escarabajo 🪲</span></div></li>
+    <li><div class="g" aria-hidden="true">🐡</div><div><strong>Infla los cachetes</strong><span class="s">Boca cerrada y con aire 🦟</span></div></li>
+    <li><div class="g" aria-hidden="true">🐽</div><div><strong>Arruga la nariz</strong><span class="s">Como si olieras algo feo 🪲</span></div></li>
   </ul>
 
   <div class="tools">
     <label><input type="checkbox" id="opt-sound" checked> Sonido</label>
     <label><input type="checkbox" id="opt-hints" checked> Mostrar ayudas</label>
-    <label>Sensibilidad <input type="range" id="opt-sens" min="0.6" max="1.6" step="0.1" value="1"></label>
+    <label>Sensibilidad <input type="range" id="opt-sens" min="0.6" max="2" step="0.1" value="1"></label>
     <label><input type="checkbox" id="opt-debug"> Ver sensores</label>
   </div>
   <div class="debug" id="debug" hidden></div>
@@ -175,10 +179,12 @@ const GESTURES = {
     (g("browOuterUpLeft") + g("browOuterUpRight")) / 2,
     (g("browDownLeft") + g("browDownRight")) / 2 * 0.9
   )},
-  cachetes: { thr: 0.32, hold: 250, val: () => g("cheekPuff") },
-  nariz:    { thr: 0.40, hold: 250, val: () => (g("noseSneerLeft") + g("noseSneerRight")) / 2 },
+  // cachetes y nariz se calculan en updateGestures (combinan varias señales y una calibración de cara neutra)
+  cachetes: { hold: 220 },
+  nariz:    { hold: 220 },
 };
 const hold = { ojos: 0, frente: 0, cachetes: 0, nariz: 0 };
+const base = {};   // valores de la cara en reposo (se calibran solos)
 
 /* ---------- Estado ---------- */
 const settings = { sound: true, hints: true, sens: 1, debug: false };
@@ -215,7 +221,7 @@ function tone(f1, f2, dur, type = "square", vol = 0.06) {
 /* ---------- Pantallas / HUD ---------- */
 const screens = document.querySelectorAll("[data-screen]");
 function showScreen(name) { screens.forEach(s => s.hidden = s.dataset.screen !== name); }
-const elScore = $("#score"), elLevel = $("#level"), elBar = $("#bar"), elCd = $("#countdown");
+const elScore = $("#score"), elLevel = $("#level"), elBar = $("#bar"), elCd = $("#countdown"), cdNum = $("#cd-num"), cdHint = $("#cd-hint");
 function updateHud() { elScore.textContent = state.score; elLevel.textContent = state.level; }
 
 /* ---------- Geometría de la cara ---------- */
@@ -226,6 +232,8 @@ function sm(key, p, f = 0.55) {
   else { s.x += (p.x - s.x) * f; s.y += (p.y - s.y) * f; }
   return smooth[key];
 }
+const ssc = {};
+function sc(key, v, f = 0.5) { ssc[key] = ssc[key] === undefined ? v : ssc[key] + (v - ssc[key]) * f; return ssc[key]; }
 const mid = (a, b, t = 0.5) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 const pairSort = (p, q) => (p.x <= q.x ? [p, q] : [q, p]);
 
@@ -244,17 +252,26 @@ function buildFace(lm) {
   const mouth = mid(P(13), P(14));
   const nose = mid(P(6), P(4), 0.65);
 
+  // Medidas geométricas (ayudan a detectar cachetes inflados y nariz arrugada)
+  const Dm = (i, j) => Math.hypot((lm[i].x - lm[j].x) * W, (lm[i].y - lm[j].y) * H);
+  const eyeW = Dm(33, 263) || 1, faceH = Dm(10, 152) || 1;
+  const geo = {
+    cheekRatio: sc("cr", ((Dm(205, 425) + Dm(50, 280)) / 2) / eyeW),
+    noseRatio:  sc("nr", Dm(2, 0) / faceH),
+    yaw:        sc("yaw", (P(1).x - (a.x + b.x) / 2) / w),
+  };
+
   const raw = {
-    "frente:-1": off(fore, -0.11), "frente:1": off(fore, 0.11),
+    "frente:-1": off(fore, -0.15), "frente:1": off(fore, 0.15),
     "ojos:-1": eL, "ojos:1": eR,
     "cachetes:-1": cL, "cachetes:1": cR,
-    "boca:-1": off(mouth, -0.07), "boca:1": off(mouth, 0.07),
+    "boca:-1": off(mouth, -0.10), "boca:1": off(mouth, 0.10),
     "nariz:0": nose,
   };
   const anchors = {};
   for (const k in raw) anchors[k] = sm(k, raw[k]);
   const wS = sm("w", { x: w, y: 0 }).x;
-  return { w: wS, anchors, mouth: sm("mouth", mouth) };
+  return { w: wS, anchors, mouth: sm("mouth", mouth), geo };
 }
 
 function readBlend(res) {
@@ -339,12 +356,46 @@ function updateGestures(dtMs) {
     state.mouthOpen = false; mouthOpenMs = 0;
   }
 
-  // Resto de gestos: solo cuenta el dominante, y no con la boca muy abierta
-  const vals = {}, ratios = {};
+  // ----- Señales crudas -----
+  const cp = g("cheekPuff");
+  const sn = (g("noseSneerLeft") + g("noseSneerRight")) / 2;
+  const up = (g("mouthUpperUpLeft") + g("mouthUpperUpRight")) / 2;
+  const smile = (g("mouthSmileLeft") + g("mouthSmileRight")) / 2;
+  const geo = face.geo;
+  const geoOk = Math.abs(geo.yaw) < 0.09 && jaw < 0.25 && smile < 0.4;   // sin girar la cabeza, sin sonreír
+
+  // ----- Activación = cuánto sube la señal sobre tu cara en reposo (>= 1 significa gesto hecho) -----
+  const aCp = (cp - (base.cp ?? cp)) / 0.14;
+  const aCr = geoOk && base.cr !== undefined ? (geo.cheekRatio - base.cr) / 0.03 : 0;
+  const aSn = (sn - (base.sn ?? sn)) / 0.12;
+  const aUp = smile < 0.4 ? (up - (base.up ?? up)) / 0.22 : 0;
+  const aNr = geoOk && base.nr !== undefined ? ((base.nr - geo.noseRatio) / base.nr) / 0.06 : 0;
+
+  // ----- Calibración de la cara neutra: rápida en la cuenta regresiva, lenta durante el juego -----
+  const rate = state.mode === "countdown" ? 0.15 : state.mode === "playing" ? 0.01 : 0;
+  const calib = (k, v, a, ok = true) => {
+    if (!ok) return;
+    if (base[k] === undefined) { base[k] = v; return; }
+    if (rate && jaw < 0.2 && (state.mode === "countdown" || a < 0.3)) base[k] += (v - base[k]) * rate;
+  };
+  calib("cp", cp, aCp);
+  calib("sn", sn, aSn);
+  calib("up", up, aUp, smile < 0.4);
+  calib("cr", geo.cheekRatio, aCr, geoOk);
+  calib("nr", geo.noseRatio, aNr, geoOk);
+
+  const act = {
+    ojos:     GESTURES.ojos.val() / GESTURES.ojos.thr,
+    frente:   GESTURES.frente.val() / GESTURES.frente.thr,
+    cachetes: Math.max(aCp, aCr) * 1.15,
+    nariz:    Math.max(aSn, aUp, aNr) * 1.15,
+  };
+
+  // Solo cuenta el gesto dominante, y no con la boca muy abierta
+  const ratios = {};
   let best = null, bestR = 1;
   for (const k in GESTURES) {
-    vals[k] = GESTURES[k].val();
-    ratios[k] = vals[k] / (GESTURES[k].thr / s);
+    ratios[k] = act[k] * s;
     if (jaw < 0.35 && ratios[k] >= bestR) { best = k; bestR = ratios[k]; }
   }
   for (const k in hold) {
@@ -358,11 +409,18 @@ function updateGestures(dtMs) {
   }
 
   if (settings.debug) {
-    const f = (n) => n.toFixed(2).padStart(4);
+    const f = (n) => n.toFixed(2).padStart(5);
+    const pc = (n) => ((n >= 0 ? "+" : "") + (n * 100).toFixed(1) + "%").padStart(7);
+    const mark = (k) => (k === best ? "  <== activo" : "");
     $("#debug").textContent =
-      "boca (abrir/cerrar)  " + f(jaw) + "  abre>" + openThr.toFixed(2) + "  cierra<" + closeThr + "\n" +
-      Object.keys(GESTURES).map(k => (k + "                ").slice(0, 20) + f(vals[k]) + "  umbral " + (GESTURES[k].thr / s).toFixed(2) +
-        (k === best ? "   <== activo" : "")).join("\n");
+      "Cada gesto cuenta cuando llega a 1.00\n" +
+      "boca     jaw " + f(jaw).trim() + "  (abre > " + openThr.toFixed(2) + ", cierra < " + closeThr + ")\n" +
+      "ojos     " + f(ratios.ojos) + mark("ojos") + "\n" +
+      "frente   " + f(ratios.frente) + mark("frente") + "\n" +
+      "cachetes " + f(ratios.cachetes) + "   puff " + f(cp).trim() + " (reposo " + f(base.cp ?? 0).trim() + ")  ancho" +
+        pc(base.cr ? (geo.cheekRatio - base.cr) / base.cr : 0) + (geoOk ? "" : " (ignorado)") + mark("cachetes") + "\n" +
+      "nariz    " + f(ratios.nariz) + "   sneer " + f(sn).trim() + "  labio " + f(up).trim() + "  corto" +
+        pc(base.nr ? (base.nr - geo.noseRatio) / base.nr : 0) + (geoOk ? "" : " (ignorado)") + mark("nariz");
   }
 }
 
@@ -390,7 +448,7 @@ function update(dt) {
       ins.wt -= dt;
       if (ins.wt <= 0) {                       // pasea por su zona sin irse de ella
         ins.wt = 0.5 + Math.random();
-        const r = face.w * 0.03;
+        const r = face.w * 0.04;
         ins.wx = (Math.random() * 2 - 1) * r; ins.wy = (Math.random() * 2 - 1) * r;
       }
       const k = Math.min(1, dt * 3);
@@ -421,7 +479,7 @@ function endGame() {
 const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 const TEXT_FONT = '"Fredoka","Trebuchet MS",system-ui,sans-serif';
 
-function insectSize() { return face ? Math.max(30, Math.min(130, face.w * 0.15)) : 50; }
+function insectSize() { return face ? Math.max(56, Math.min(240, face.w * 0.28)) : 80; }
 
 function draw(dt, now) {
   ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1);
@@ -546,11 +604,11 @@ function loop() {
   else if (state.mode === "paused" && !lost) { state.mode = "playing"; showScreen(null); }
 
   if (state.mode === "countdown") {
-    if (lost) { elCd.textContent = "Muestra tu cara"; elCd.classList.add("small"); }
+    if (lost) { cdNum.textContent = "Muestra tu cara"; cdHint.hidden = true; elCd.classList.add("small"); }
     else {
-      elCd.classList.remove("small");
+      elCd.classList.remove("small"); cdHint.hidden = false;
       state.cd -= dt;
-      elCd.textContent = Math.max(1, Math.ceil(state.cd));
+      cdNum.textContent = Math.max(1, Math.ceil(state.cd));
       if (state.cd <= 0) { state.mode = "playing"; elCd.hidden = true; state.spawnT = 0.4; }
     }
   }
@@ -578,7 +636,7 @@ function beginRound() {
   mouthOpenMs = 0;
   updateHud();
   $("#hud").hidden = false;
-  elCd.hidden = false; elCd.textContent = "3";
+  elCd.hidden = false; cdNum.textContent = "3"; cdHint.hidden = false;
   showScreen(null);
 }
 
