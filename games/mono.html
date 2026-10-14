@@ -102,13 +102,13 @@ function monkey(x,y,u,sq,air){
   const sw=air?0:Math.sin(t*14),bob=air?0:Math.abs(Math.sin(t*14))*u*.05;
   ctx.save();ctx.translate(x,y-bob);ctx.scale(1,sq);ctx.lineCap='round';ctx.strokeStyle='#6b3f1d';ctx.lineWidth=u*.13;
   ctx.beginPath();ctx.moveTo(-u*.12,-u*.38);ctx.lineTo(-u*.12+sw*u*.15,0);ctx.moveTo(u*.12,-u*.38);ctx.lineTo(u*.12-sw*u*.15,0);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(-u*.1,-u*.5);ctx.quadraticCurveTo(-u*.6,-u*.45,-u*.42,-u*.95);ctx.stroke();
+  
   ctx.beginPath();ctx.moveTo(-u*.2,-u*.62);ctx.lineTo(-u*.34-sw*u*.1,-u*.4);ctx.moveTo(u*.2,-u*.62);ctx.lineTo(u*.34+sw*u*.1,-u*.4);ctx.stroke();
   ctx.fillStyle='#8a5a2b';ctx.beginPath();ctx.ellipse(0,-u*.52,u*.26,u*.3,0,0,7);ctx.fill();
-  ctx.fillStyle='#e0bf9a';ctx.beginPath();ctx.ellipse(0,-u*.48,u*.15,u*.2,0,0,7);ctx.fill();
+  ctx.strokeStyle='#6b3f1d';ctx.lineWidth=u*.12;ctx.beginPath();ctx.moveTo(0,-u*.3);ctx.quadraticCurveTo(u*.15,-u*.08,u*.4,-u*.22);ctx.quadraticCurveTo(u*.58,-u*.38,u*.44,-u*.6);ctx.stroke();
   ctx.fillStyle='#8a5a2b';ctx.beginPath();ctx.arc(0,-u*.93,u*.22,0,7);ctx.arc(-u*.24,-u*.95,u*.08,0,7);ctx.arc(u*.24,-u*.95,u*.08,0,7);ctx.fill();
-  ctx.fillStyle='#e0bf9a';ctx.beginPath();ctx.ellipse(0,-u*.89,u*.15,u*.12,0,0,7);ctx.fill();
-  ctx.fillStyle='#2b1a0a';ctx.beginPath();ctx.arc(-u*.07,-u*.95,u*.025,0,7);ctx.arc(u*.07,-u*.95,u*.025,0,7);ctx.fill();
+  ctx.strokeStyle='#5a3615';ctx.lineWidth=u*.05;ctx.beginPath();ctx.moveTo(0,-u*1.12);ctx.quadraticCurveTo(u*.09,-u*1.0,0,-u*.88);ctx.stroke();
+  
   ctx.restore();
 }
 function drawItem(o){
